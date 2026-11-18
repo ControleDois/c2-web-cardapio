@@ -65,24 +65,33 @@ function ProductSheetBody({ product, canOrder, onClose, onAdd }: ProductSheetPro
     return total < effectiveMinimum(group)
   })
 
+  // Grupo completo (chegou no limite): rola sozinho para o próximo grupo (ou para a observação).
+  function advanceIfFull(group: ComplementGroup, next: Selection) {
+    if (group.maximum <= 0 || groupCounts(group, next).total < group.maximum) return
+    const index = product.complements.findIndex((item) => item.id === group.id)
+    const target = product.complements[index + 1]
+    const element = document.getElementById(target ? `complemento-${target.id}` : 'complemento-observacao')
+    if (element) setTimeout(() => element.scrollIntoView({ behavior: 'smooth', block: 'start' }), 180)
+  }
+
   function toggleSingle(group: ComplementGroup, optionId: string) {
-    setSelection((current) => {
-      const selected = current[group.id]?.[optionId]
-      return { ...current, [group.id]: selected ? {} : { [optionId]: 1 } }
-    })
+    const selected = selection[group.id]?.[optionId]
+    const next = { ...selection, [group.id]: selected ? {} : { [optionId]: 1 } }
+    setSelection(next)
+    if (!selected) advanceIfFull(group, next)
   }
 
   function changeOption(group: ComplementGroup, optionId: string, delta: number) {
-    setSelection((current) => {
-      const groupSelection = { ...(current[group.id] ?? {}) }
-      const option = group.options.find((item) => item.id === optionId)
-      const next = Math.max((groupSelection[optionId] ?? 0) + delta, 0)
-      const { free } = groupCounts(group, current)
-      if (delta > 0 && option?.sale_value === 0 && group.maximum > 0 && free >= group.maximum) return current
-      if (next === 0) delete groupSelection[optionId]
-      else groupSelection[optionId] = next
-      return { ...current, [group.id]: groupSelection }
-    })
+    const groupSelection = { ...(selection[group.id] ?? {}) }
+    const option = group.options.find((item) => item.id === optionId)
+    const quantity = Math.max((groupSelection[optionId] ?? 0) + delta, 0)
+    const { free } = groupCounts(group, selection)
+    if (delta > 0 && option?.sale_value === 0 && group.maximum > 0 && free >= group.maximum) return
+    if (quantity === 0) delete groupSelection[optionId]
+    else groupSelection[optionId] = quantity
+    const next = { ...selection, [group.id]: groupSelection }
+    setSelection(next)
+    if (delta > 0) advanceIfFull(group, next)
   }
 
   function handleAdd() {
@@ -204,7 +213,7 @@ function ProductSheetBody({ product, canOrder, onClose, onAdd }: ProductSheetPro
           const single = group.maximum === 1
           const satisfied = counts.total >= effectiveMinimum(group)
           return (
-            <section key={group.id} className="mt-6">
+            <section key={group.id} id={`complemento-${group.id}`} className="mt-6 scroll-mt-4">
               <div className="flex items-center justify-between gap-3 rounded-xl bg-[var(--page)] px-4 py-3">
                 <div>
                   <h3 className="text-[14px] font-bold text-[var(--ink)]">{group.name}</h3>
@@ -283,7 +292,7 @@ function ProductSheetBody({ product, canOrder, onClose, onAdd }: ProductSheetPro
           )
         })}
 
-        <label className="mt-6 block">
+        <label id="complemento-observacao" className="mt-6 block scroll-mt-4">
           <span className="text-[13px] font-bold text-[var(--ink)]">Alguma observação?</span>
           <textarea
             value={note}
